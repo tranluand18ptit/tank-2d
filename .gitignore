@@ -1,1 +1,57 @@
-Nothing should be ignored based on the provided file changes. The added files (.gitignore, plan.md, phases.md) are all source/config files that should be tracked in version control.
+```
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Package lock files
+package-lock.json
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vite specific
+.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python specific (if any Python files exist in the project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+*.so
+.Python
+```
