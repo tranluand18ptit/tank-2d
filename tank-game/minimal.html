@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minimal Tank Game</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #1a1a2e;
+      font-family: Arial, sans-serif;
+    }
+    #game-container {
+      position: relative;
+    }
+    #game-canvas {
+      border: 4px solid #333;
+      background: #000;
+    }
+    #instructions {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="instructions">WASD to Move | SPACE to Shoot</div>
+  </div>
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas size
+    canvas.width = 640;
+    canvas.height = 480;
+    
+    // Tile size for the map
+    const TILE_SIZE = 40;
+    const COLS = Math.floor(canvas.width / TILE_SIZE);
+    const ROWS = Math.floor(canvas.height / TILE_SIZE);
+    
+    // Map: 0 = empty, 1 = brick wall, 2 = steel wall, 3 = water
+    const map = [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1],
+      [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+      [1, 0, 0, 1, 0, 0, 3, 3, 3, 3, 0, 0, 1, 0, 0, 1],
+      [1, 0, 0, 1, 0, 0, 3, 3, 3, 3, 0, 0, 1, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    ];
+    
+    // Tank object
+    const tank = {
+      x: 2 * TILE_SIZE,
+      y: 9 * TILE_SIZE,
+      width: 32,
+      height: 32,
+      speed: 150,
+      direction: 'up',
+      color: '#f1c40f'
+    };
+    
+    // Bullets array
+    const bullets = [];
+    
+    // Input state
+    const keys = {
+      w: false,
+      a: false,
+      s: false,
+      d: false,
+      space: false
+    };
+    
+    let lastShootTime = 0;
+    const shootDelay = 300; // ms between shots
+    
+    // Event listeners
+    document.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (key === 'w') keys.w = true;
+      if (key === 'a') keys.a = true;
+      if (key === 's') keys.s = true;
+      if (key === 'd') keys.d = true;
+      if (key === ' ') {
+        keys.space = true;
+        e.preventDefault(); // Prevent page scrolling
+      }
+    });
+    
+    document.addEventListener('keyup', (e) => {
+      const key = e.key.toLowerCase();
+      if (key === 'w') keys.w = false;
+      if (key === 'a') keys.a = false;
+      if (key === 's') keys.s = false;
+      if (key === 'd') keys.d = false;
+      if (key === ' ') keys.space = false;
+    });
+    
+    // Check collision with walls
+    function checkWallCollision(x, y, width, height) {
+      const corners = [
+        { x: x, y: y },
+        { x: x + width, y: y },
+        { x: x, y: y + height },
+        { x: x + width, y: y + height }
+      ];
+      
+      for (const corner of corners) {
+        const col = Math.floor(corner.x / TILE_SIZE);
+        const row = Math.floor(corner.y / TILE_SIZE);
+        
+        if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+          const tile = map[row][col];
+          if (tile === 1 || tile === 2 || tile === 3) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    
+    // Update tank position
+    function updateTank(deltaTime) {
+      let dx = 0;
+      let dy = 0;
+      let newDirection = null;
+      
+      if (keys.w) {
+        dy = -tank.speed * (deltaTime / 1000);
+        newDirection = 'up';
+      } else if (keys.s) {
+        dy = tank.speed * (deltaTime / 1000);
+        newDirection = 'down';
+      } else if (keys.a) {
+        dx = -tank.speed * (deltaTime / 1000);
+        newDirection = 'left';
+      } else if (keys.d) {
+        dx = tank.speed * (deltaTime / 1000);
+        newDirection = 'right';
+      }
+      
+      if (newDirection) {
+        tank.direction = newDirection;
+      }
+      
+      if (dx !== 0 || dy !== 0) {
+        const newX = tank.x + dx;
+        const newY = tank.y + dy;
+        
+        // Check boundaries
+        if (newX >= 0 && newX + tank.width <= canvas.width &&
+            newY >= 0 && newY + tank.height <= canvas.height) {
+          // Check wall collision
+          if (!checkWallCollision(newX, newY, tank.width, tank.height)) {
+            tank.x = newX;
+            tank.y = newY;
+          }
+        }
+      }
+    }
+    
+    // Shoot bullet
+    function shoot(currentTime) {
+      if (keys.space && currentTime - lastShootTime > shootDelay) {
+        let bulletX = tank.x + tank.width / 2 - 4;
+        let bulletY = tank.y + tank.height / 2 - 4;
+        
+        switch(tank.direction) {
+          case 'up':
+            bulletY -= 16;
+            break;
+          case 'down':
+            bulletY += 16;
+            break;
+          case 'left':
+            bulletX -= 16;
+            break;
+          case 'right':
+            bulletX += 16;
+            break;
+        }
+        
+        bullets.push({
+          x: bulletX,
+          y: bulletY,
+          width: 8,
+          height: 8,
+          direction: tank.direction,
+          speed: 400
+        });
+        
+        lastShootTime = currentTime;
+      }
+    }
+    
+    // Update bullets
+    function updateBullets(deltaTime) {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        const distance = bullet.speed * (deltaTime / 1000);
+        
+        switch(bullet.direction) {
+          case 'up':
+            bullet.y -= distance;
+            break;
+          case 'down':
+            bullet.y += distance;
+            break;
+          case 'left':
+            bullet.x -= distance;
+            break;
+          case 'right':
+            bullet.x += distance;
+            break;
+        }
+        
+        // Remove if out of bounds
+        if (bullet.x < 0 || bullet.x > canvas.width || 
+            bullet.y < 0 || bullet.y > canvas.height) {
+          bullets.splice(i, 1);
+          continue;
+        }
+        
+        // Check collision with walls
+        const col = Math.floor((bullet.x + bullet.width / 2) / TILE_SIZE);
+        const row = Math.floor((bullet.y + bullet.height / 2) / TILE_SIZE);
+        
+        if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+          const tile = map[row][col];
+          if (tile === 1 || tile === 2) {
+            // Destroy brick walls (tile 1), not steel (tile 2)
+            if (tile === 1) {
+              map[row][col] = 0;
+            }
+            bullets.splice(i, 1);
+          }
+        }
+      }
+    }
+    
+    // Render map
+    function renderMap() {
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          const tile = map[row][col];
+          const x = col * TILE_SIZE;
+          const y = row * TILE_SIZE;
+          
+          switch(tile) {
+            case 1: // Brick
+              ctx.fillStyle = '#d35400';
+              ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+              ctx.fillStyle = '#e67e22';
+              ctx.fillRect(x + 6, y + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+              break;
+            case 2: // Steel
+              ctx.fillStyle = '#bdc3c7';
+              ctx.fillRect(x + 4, y + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+              ctx.strokeStyle = '#95a5a6';
+              ctx.lineWidth = 2;
+              ctx.strokeRect(x + 6, y + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+              break;
+            case 3: // Water
+              ctx.fillStyle = '#3498db';
+              ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+              break;
+          }
+        }
+      }
+    }
+    
+    // Render tank
+    function renderTank() {
+      // Body
+      ctx.fillStyle = tank.color;
+      ctx.fillRect(tank.x, tank.y, tank.width, tank.height);
+      
+      // Cannon
+      ctx.fillStyle = '#333';
+      const cannonWidth = 6;
+      const cannonLength = 16;
+      
+      let cannonX = tank.x + tank.width / 2 - cannonWidth / 2;
+      let cannonY = tank.y + tank.height / 2 - cannonWidth / 2;
+      
+      switch(tank.direction) {
+        case 'up':
+          cannonY -= cannonLength;
+          ctx.fillRect(cannonX, cannonY, cannonWidth, cannonLength);
+          break;
+        case 'down':
+          cannonY += cannonWidth;
+          ctx.fillRect(cannonX, cannonY, cannonWidth, cannonLength);
+          break;
+        case 'left':
+          cannonX -= cannonLength;
+          ctx.fillRect(cannonX, cannonY, cannonLength, cannonWidth);
+          break;
+        case 'right':
+          cannonX += cannonWidth;
+          ctx.fillRect(cannonX, cannonY, cannonLength, cannonWidth);
+          break;
+      }
+      
+      // Treads
+      ctx.fillStyle = '#222';
+      const treadWidth = 4;
+      switch(tank.direction) {
+        case 'up':
+        case 'down':
+          ctx.fillRect(tank.x, tank.y, treadWidth, tank.height);
+          ctx.fillRect(tank.x + tank.width - treadWidth, tank.y, treadWidth, tank.height);
+          break;
+        case 'left':
+        case 'right':
+          ctx.fillRect(tank.x, tank.y, tank.width, treadWidth);
+          ctx.fillRect(tank.x, tank.y + tank.height - treadWidth, tank.width, treadWidth);
+          break;
+      }
+    }
+    
+    // Render bullets
+    function renderBullets() {
+      ctx.fillStyle = '#fff';
+      bullets.forEach(bullet => {
+        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+      });
+    }
+    
+    // Game loop
+    let lastTime = performance.now();
+    
+    function gameLoop(currentTime) {
+      const deltaTime = currentTime - lastTime;
+      lastTime = currentTime;
+      
+      // Clear canvas
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Update
+      updateTank(deltaTime);
+      shoot(currentTime);
+      updateBullets(deltaTime);
+      
+      // Render
+      renderMap();
+      renderBullets();
+      renderTank();
+      
+      requestAnimationFrame(gameLoop);
+    }
+    
+    // Start game
+    gameLoop(performance.now());
+  </script>
+</body>
+</html>
